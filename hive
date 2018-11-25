@@ -1,0 +1,45 @@
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS ratings;
+DROP TABLE IF EXISTS movies;
+DROP TABLE IF EXISTS data_ratings;
+DROP TABLE IF EXISTS data_counts;
+DROP TABLE IF EXISTS data_max;
+DROP TABLE IF EXISTS data_counts_id;
+DROP TABLE IF EXISTS data_titles;
+
+-- create tables and load all data required. I used external tables.
+CREATE EXTERNAL TABLE users 
+(UserID INT, n1 STRING, Gender STRING, n2 STRING, Age INT, n3 STRING, Occupation INT, n4 STRING, Zipcode STRING)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ':' LOCATION  '/user/cloudera/test3/input_users/';
+
+CREATE EXTERNAL TABLE ratings 
+(UserID INT, n1 STRING, MovieID INT, n2 STRING, Rating INT, n3 STRING, Time INT)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ':' LOCATION  '/user/cloudera/test3/input_ratings/';
+
+CREATE EXTERNAL TABLE movies 
+(MovieID INT, n1 STRING, Title STRING, n2 STRING, Genre INT)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ':' LOCATION  '/user/cloudera/test3/input_movies/';
+
+-- join ratings and users... 
+CREATE TABLE data_ratings AS SELECT ratings.MovieID, users.Age, ratings.Rating  
+FROM ratings JOIN users ON (ratings.UserID = users.UserID);
+
+-- ... and then count ratings and calculate average ratings as well
+CREATE TABLE data_counts AS SELECT Age, MovieID, COUNT(Rating) AS Cnt, AVG(Rating) AS AveRating FROM data_ratings GROUP BY Age, MovieID;
+
+-- group counts to find the max count for each age group
+CREATE TABLE data_max AS SELECT Age, MAX(Cnt) AS MaxCount FROM data_counts GROUP BY Age;
+
+-- join max counts with all counts to find actual movie id number corresponding to the max counts
+CREATE TABLE data_counts_id AS SELECT data_max.Age, data_counts.MovieID, data_counts.Cnt, data_counts.AveRating
+FROM data_max JOIN data_counts ON (data_max.MaxCount = data_counts.Cnt AND data_max.Age = data_counts.Age);
+
+-- join results with movie titles
+CREATE TABLE data_titles AS SELECT data_counts_id.Age, data_counts_id.MovieID, movies.Title, data_counts_id.Cnt, data_counts_id.AveRating
+FROM data_counts_id JOIN movies ON (data_counts_id.MovieID = movies.MovieID);
+
+-- save results to file ...
+INSERT OVERWRITE DIRECTORY '/user/cloudera/test3/output' ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t' SELECT * FROM data_titles SORT BY Age;
+
+-- ... or output results on the screen
+SELECT * FROM data_titles SORT BY Age;
